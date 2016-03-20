@@ -1,3 +1,4 @@
 base:
   '*':
     - adminutils
+    - programmer

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]
+  then
+    echo "usage: ./upload <what>"
+    exit 1
+fi
+
+make $1.hex || exit
+gpio -g mode 22 out || exit
+gpio -g write 22 0 || exit
+avrdude -p attiny13 -P /dev/spidev0.0 -c linuxspi \
+            -b 10000 -U flash:w:$1.hex || exit
+gpio -g write 22 1 || exit
