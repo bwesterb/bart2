@@ -19,3 +19,11 @@ else
 endif
 
 map \h :nohlsearch<CR>
+
+au BufRead,BufNewFile *.sls call SetupSLS()
+
+function SetupSLS()
+    setlocal ts=2
+    setlocal sw=2
+    setlocal ft=yaml
+endfunction
