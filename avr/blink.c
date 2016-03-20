@@ -10,7 +10,7 @@ int main(void)
     DDRB = (1 << DDB4);
 
     while (1) {
-        PORTB ^= (1 << DDB4);
+        PINB |= (1 << DDB4);
         _delay_ms(500);
     }
 
