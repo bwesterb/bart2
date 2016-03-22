@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 if [ $# -ne 1 ]
   then
@@ -6,9 +6,20 @@ if [ $# -ne 1 ]
     exit 1
 fi
 
-make $1.hex || exit
-gpio -g mode 22 out || exit
-gpio -g write 22 0 || exit
+# Make sure our software is compiled
+make $1.hex
+
+# Reset the AVR by pulling the RESET pin low.
+gpio -g mode 22 out
+gpio -g write 22 0
+
+# Make sure our SPI device is in the corerct mode.
+# XXX is there a flag for avrdude or an commandline util for this?
+python -c 'import spidev; sp = spidev.SpiDev(); sp.open(0,0); sp.mode = 0'
+
+# Flash the AVR
 avrdude -p attiny13 -P /dev/spidev0.0 -c linuxspi \
-            -b 10000 -U flash:w:$1.hex || exit
-gpio -g write 22 1 || exit
+            -b 10000 -U flash:w:$1.hex
+
+# And let it run
+gpio -g write 22 1

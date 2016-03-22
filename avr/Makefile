@@ -1,6 +1,6 @@
 MCU=attiny13
 CC=avr-gcc
-CFLAGS=-Os -Wall -mcall-prologues -mmcu=$(MCU)
+CFLAGS=-Os -Wall -mcall-prologues -mmcu=$(MCU) -std=c99
 OBJ2HEX=avr-objcopy
 
 default: blink.hex
