@@ -2,6 +2,7 @@
     and output its input. """
 
 import spidev
+import time
 
 def main():
     spi = spidev.SpiDev()
@@ -9,7 +10,11 @@ def main():
     spi.mode = 1
     spi.max_speed_hz = 10000
 
-    print map(bin, spi.xfer([0b10110100,0b11111111,0b01010101,0b01101001]))
+    print map(bin, spi.xfer([0b10101010]))
+    time.sleep(0.002)
+    print map(bin, spi.xfer([0b11111111]))
+    time.sleep(0.002)
+    print map(bin, spi.xfer([0b00000000]))
 
 if __name__ == '__main__':
     main()

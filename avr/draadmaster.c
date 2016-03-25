@@ -26,7 +26,6 @@ volatile byte draad_to_send = 0;
 volatile unsigned int draad_buffer = 0;
 volatile byte spi_to_send = 0;
 volatile unsigned int spi_buffer = 0;
-bool spi_announced = 0;
 
 void draad_tick()
 {
@@ -64,12 +63,15 @@ void draad_tick()
         return;
     }
     _delay_us(DRAAD_DELAY);
-    if (PINB & (1 << DRAAD))
+    if (PINB & (1 << DRAAD)) {
         received = 1;
-    ATOMIC_BLOCK(ATOMIC_FORCEON)
-    {
-        spi_buffer |= received << spi_to_send;
-        spi_to_send++;
+    }
+    if (spi_to_send < 16) {
+        ATOMIC_BLOCK(ATOMIC_FORCEON)
+        {
+            spi_buffer |= received << spi_to_send;
+            spi_to_send++;
+        }
     }
     _delay_us(DRAAD_DELAY);
 }
@@ -111,24 +113,19 @@ ISR(PCINT0_vect)
             volatile bool to_send = 0;
 
             if (spi_to_send > 0) {
-                if (!spi_announced) {
-                    spi_announced = 1;
-                    to_send = 1;
-                } else {
-                    spi_announced = 0;
-                    ATOMIC_BLOCK(ATOMIC_FORCEON)
-                    {
-                        to_send = spi_buffer & 1;
-                        spi_buffer >>= 1;
-                        spi_to_send--;
-                    }
+                ATOMIC_BLOCK(ATOMIC_FORCEON)
+                {
+                    to_send = spi_buffer & 1;
+                    spi_buffer >>= 1;
+                    spi_to_send--;
                 }
             }
 
-            if (to_send)
+            if (to_send) {
                 PORTB |= 1 << SPI_MISO;
-            else
+            } else {
                 PORTB &= ~(1 << SPI_MISO);
+            }
         } else {
             if (draad_to_send != 16) {
                 ATOMIC_BLOCK(ATOMIC_FORCEON)
