@@ -13,9 +13,8 @@
 // There is a single wire from the MUX to each of the other uCs.  With this
 // single wire the uC and the MUX can communicate in half-duplex using a
 // variation on the "one-wire protocol", we call "draad".  See XXX
-// 
-// XXX write draad_rx_buffer --> spi_tx_buffer code
-// XXX fix bug in spi rx code
+//
+// XXX send status
 
 #include "common.h"
 
@@ -26,31 +25,41 @@
 #define PIN_DRAAD1     DDB3
 #define PIN_DRAAD2     DDB4
 
-volatile unsigned long spi_tx_buffer = 0;
-volatile byte spi_tx_buffer_size = 0;           // XXX only need 5 bits
+register unsigned long spi_tx_buffer asm("r10"); // r10, r11, r12, r13
+register byte spi_tx_buffer_size asm("r14");    // XXX only need 5 bits
 
 // The header of an incoming frame will be stored in spi_rx_header_buffer.
 // The body is stored in spi_rx_buffer.
-byte spi_rx_header_buffer = 0;
-byte spi_rx_header_buffer_size = 0;             // XXX only need 3 bits
-unsigned long spi_rx_buffer = 0;
-byte spi_rx_buffer_size = 0;                    // XXX only need 5 bits
+register byte spi_rx_header_buffer asm("r3");   // XXX only need 3 bits
+register byte spi_rx_header_buffer_size asm("r4");
+register byte spi_rx_buffer_size asm("r5");     // XXX only need 5 bits
+register unsigned long spi_rx_buffer asm("r6"); // r6, r7, r8, r9
 
 volatile unsigned long draad_tx_buffer[2] = {0,0};
 volatile byte draad_tx_buffer_size[2] = {0,0};
-volatile unsigned long draad_rx_buffer[2] = {0,0};
-volatile byte draad_rx_buffer_size[2] = {0,0};
 
+unsigned long draad_rx_buffer[2] = {0,0};
+byte draad_rx_buffer_size[2] = {0,0};
 
 struct status {
     byte draad_tx_overflow : 1;
 };
 
-volatile struct status status;
+register struct status status asm("r15");
 
-int main(void)
+void main(void) __attribute__ ((noreturn));
+
+void main(void)
 {
     full_speed_clock();
+
+    spi_rx_header_buffer_size = 0;
+    spi_rx_header_buffer = 0;
+    spi_rx_buffer_size = 0;
+    spi_rx_buffer = 0;
+
+    spi_tx_buffer = 0;
+    spi_tx_buffer_size = 0;
 
     status.draad_tx_overflow = 0;
 
@@ -65,11 +74,27 @@ int main(void)
 
     for(;;) {
         who = 1 - who;
+
+        // Fill SPI tx buffer if it's empty
+        if (spi_tx_buffer_size == 0 && draad_rx_buffer_size[who] > 0) {
+                byte n_bits_to_send = draad_rx_buffer_size[who];
+                if (n_bits_to_send > 24)
+                    n_bits_to_send = 24;
+            ATOMIC_BLOCK(ATOMIC_FORCEON)
+            {
+                spi_tx_buffer = 1 | (n_bits_to_send << 1) | (who << 6)
+                                  | (draad_rx_buffer[who] << 8);
+                spi_tx_buffer_size = 8 + n_bits_to_send;
+            }
+            draad_rx_buffer_size[who] -= n_bits_to_send;
+            draad_rx_buffer[who] >>= n_bits_to_send;
+        }
+
         byte pin = who == 0 ? PIN_DRAAD1 : PIN_DRAAD2;
 
         if (draad_tx_buffer_size[who] > 0) {
             byte to_send;
-           
+
             // Fetch the bit to send
             ATOMIC_BLOCK(ATOMIC_FORCEON)
             {
@@ -114,15 +139,10 @@ int main(void)
         if (PINB & _BV(pin))
             received = 1;
 
-        ATOMIC_BLOCK(ATOMIC_FORCEON)
-        {
-            draad_rx_buffer[who] |= (received << draad_rx_buffer_size[who]);
-            draad_rx_buffer_size[who]++;
-        }
+        draad_rx_buffer[who] |= (received << draad_rx_buffer_size[who]);
+        draad_rx_buffer_size[who]++;
         _delay_us(DRAAD_DELAY);
     }
-
-    return 0;
 }
 
 // Interrupt handlers.
@@ -152,7 +172,7 @@ ISR(PCINT0_vect)
     }
 
     // SPI clock is low --- we read the SPI input pin (MOSI).
-    byte received = !!(PORTB & _BV(PIN_SPI_MOSI)); 
+    byte received = !!(PINB & _BV(PIN_SPI_MOSI));
 
     // If spi_rx_header_buffer_size == 0 we are in the idle state, and we wait
     // for a 1 to start a frame.
@@ -186,7 +206,7 @@ ISR(PCINT0_vect)
     // Again note that we can't be interrupted here.
     draad_tx_buffer[who] |= (spi_rx_buffer << draad_tx_buffer_size[who]);
     draad_tx_buffer_size[who] += spi_rx_buffer_size;
-    
+
 reset:
     // Reset to the idle state
     spi_rx_buffer_size = 0;

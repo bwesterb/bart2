@@ -1,6 +1,9 @@
 MCU=attiny13
 CC=avr-gcc
-CFLAGS=-Os -Wall -mcall-prologues -mmcu=$(MCU) -std=c99
+CFLAGS=-Os -Wall -mmcu=$(MCU) -std=gnu99 -Wno-main \
+			-ffreestanding -fwhole-program -ffunction-sections \
+			-fdata-sections -Wl,--relax,--gc-sections -fno-tree-scev-cprop \
+			-fno-split-wide-types -fpack-struct
 OBJ2HEX=avr-objcopy
 
 default: blink.hex
