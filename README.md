@@ -9,3 +9,5 @@ for switching the heater on and off depending on the temperature.
 
 The third micrcontroller lets the raspberry pi communicate with the
 other microcontroller.  Its firmware can be found in `avr/mux.c`.
+
+![pcb](/pcb/brd.png?raw=true)
