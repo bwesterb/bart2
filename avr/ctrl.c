@@ -23,6 +23,7 @@
 // have performed.
 register unsigned int adc_accum asm("r2");  // r2, r3
 register byte adc_cnt asm("r4");
+register byte watch_in_changed asm("r5");
 
 struct status {
     unsigned int temperature : 10;
@@ -39,13 +40,15 @@ void main(void) __attribute__ ((noreturn));
 
 void main(void)
 {
+    full_speed_clock();
+
+    // Initialize variables
     unsigned long draad_tx_buffer = 0;
     byte draad_tx_buffer_size = 0;
 
-    full_speed_clock();
-
     adc_accum = 0;
     adc_cnt = 0;
+    watch_in_changed = 0;
 
     status.heating = 0;
     status.ok = 1;
@@ -54,17 +57,26 @@ void main(void)
     status.temp_way_too_high = 0;
     status.other_uC_not_responding = 0;
 
+    // Set up watch timer
+    TCCR0B |= _BV(CS00);        // enable clock --- no prescaling
+    TIFR0 |= _BV(TOV0);         // enable clock overflow interrupt
+
     // Set up pins and interrupts for SPI.
     DDRB |= _BV(PIN_WATCH_OUT);  // Set WATCH_OUT to an output pin
     DDRB |= _BV(PIN_GO);         // Set GO to an output pin
-    //
+
     // Enable the ADC
     ADCSRA |= (1 << ADPS1) | (1 << ADPS2) | (1 << ADEN) | (1 << ADIE);
     ADMUX |= (1 << MUX1);  // ADC2 (PB4)
 
+    PCMSK |= 1 << PCINT1;   // interrupt on WATCH_IN
+    GIMSK |= 1 << PCIE;     // enable pin-change interrupts
+
     sei();  // enable interrupts
 
     ADCSRA |= (1 << ADSC);  // start first ADC conversion
+
+    PINB |= _BV(PIN_WATCH_OUT);  // let other uC know the ADC is running
 
     // XXX make protocol on draad more flexible.  I.e. to set THERM_* runtime.
     for (;;) {
@@ -85,8 +97,8 @@ void main(void)
 
             // XXX here we could handle more complex incoming messages ---
             // for now we'll just send our status message everytime we
-            // get any incoming bit.
-            if (draad_tx_buffer_size == 0) {
+            // get any incoming bit 1.
+            if (draad_tx_buffer_size == 0 && received) {
                 draad_tx_buffer = *((unsigned long*)(&status));
                 draad_tx_buffer_size = 16;
             }
@@ -129,20 +141,22 @@ ISR(ADC_vect)
     if (adc_cnt == 32) {
         unsigned int temp = adc_accum >> 5;
 
+        PINB |= _BV(PIN_WATCH_OUT);  // let other uC know the ADC is running
+
         status.temperature = temp;
         adc_accum = 0;
         adc_cnt = 0;
 
         if (temp <= TEMP_LOWER_BOUND) {
-            PORTB &= ~_BV(PIN_GO);
-            status.heating = 0;
             status.ok = 0;
             status.temp_way_too_low = 1;
-        } else if (temp >= TEMP_UPPER_BOUND) {
-            PORTB &= ~_BV(PIN_GO);
             status.heating = 0;
+            PORTB &= ~_BV(PIN_GO);
+        } else if (temp >= TEMP_UPPER_BOUND) {
             status.ok = 0;
+            status.heating = 0;
             status.temp_way_too_high = 1;
+            PORTB &= ~_BV(PIN_GO);
         } else if (!status.ok) {
         } else if (temp < TEMP_TARGET) {
             PORTB |= _BV(PIN_GO);
@@ -154,4 +168,26 @@ ISR(ADC_vect)
     }
 
     ADCSRA |= (1 << ADSC);
+}
+
+// Watchdog pin changed value.
+ISR(PCINT0_vect)
+{
+    watch_in_changed = 1;
+}
+
+// Timer overflowed
+ISR(TIM0_OVF_vect)
+{
+    // XXX grace period during start-up?
+    if (!watch_in_changed) {
+        // Other uC did not respond in time
+        status.ok = 0;
+        status.heating = 0;
+        status.other_uC_not_responding = 1;
+        PORTB &= ~_BV(PIN_GO);
+        return;
+    }
+
+    watch_in_changed = 0;
 }
