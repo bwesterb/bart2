@@ -3,6 +3,10 @@
 // Each of the uCs measures the temperature of the kettle and decides
 // whether to turn on the boiler.  The uCs are connected to a third
 // uC, the MUX, via a single wire.  See XXX
+//
+// XXX check whether temperature increase is within reasonable bounds when
+//      the heater is turned on --- this is to prevent the boiler from heating
+//      an (half-)empty boiler.
 
 #include "common.h"
 
