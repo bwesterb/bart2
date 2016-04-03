@@ -1,6 +1,6 @@
 #pragma once
 
-#define F_CPU 9400000       // XXX calibrate 
+#define F_CPU 9400000
 
 #define byte unsigned char
 
@@ -11,6 +11,10 @@
 
 // microsecond delay of the basic time period in the "draad" one-wire protocol.
 #define DRAAD_DELAY 30
+
+// microseconds it takes to pull the draad down.  Depends on the resistance
+// of the pull down resistor on the "draad".
+#define DRAAD_PULLDOWN_TIME 13
 
 // Set the ATTINY13 clock to ~9.4MHz, by clearing the clock divisor
 inline void full_speed_clock()

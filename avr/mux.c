@@ -106,15 +106,15 @@ void main(void)
             // Send the bit
             PORTB |= _BV(pin);
             if (to_send)
-                _delay_us(DRAAD_DELAY * 3);
+                _delay_us(DRAAD_DELAY * 3 - DRAAD_PULLDOWN_TIME);
             else
-                _delay_us(DRAAD_DELAY * 2);
+                _delay_us(DRAAD_DELAY * 2 - DRAAD_PULLDOWN_TIME);
 
             PORTB &= ~_BV(pin);
             if (to_send)
-                _delay_us(DRAAD_DELAY * 1);
+                _delay_us(DRAAD_DELAY * 1 + DRAAD_PULLDOWN_TIME);
             else
-                _delay_us(DRAAD_DELAY * 2);
+                _delay_us(DRAAD_DELAY * 2 + DRAAD_PULLDOWN_TIME);
 
             continue;
         }
@@ -125,10 +125,10 @@ void main(void)
 
         byte received = 0;
         PORTB |= _BV(pin);
-        _delay_us(DRAAD_DELAY);
+        _delay_us(DRAAD_DELAY - DRAAD_PULLDOWN_TIME);
 
         PORTB &= ~_BV(pin);
-        _delay_us(DRAAD_DELAY);
+        _delay_us(DRAAD_DELAY + DRAAD_PULLDOWN_TIME);
 
         if (!(PINB & _BV(pin))) {
             _delay_us(DRAAD_DELAY * 2);
