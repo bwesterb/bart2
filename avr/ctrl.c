@@ -61,9 +61,9 @@ void main(void)
     status.temp_way_too_high = 0;
     status.other_uC_not_responding = 0;
 
-    // Set up watch timer
-    TCCR0B |= _BV(CS00);        // enable clock --- no prescaling
-    TIFR0 |= _BV(TOV0);         // enable clock overflow interrupt
+    // Set up watch timer (~18Hz)
+    TCCR0B |= _BV(CS00) | _BV(CS02);  // enable clock --- prescale by 1024
+    TIMSK0 |= _BV(TOIE0);        // enable clock overflow interrupt
 
     // Set up pins and interrupts for SPI.
     DDRB |= _BV(PIN_WATCH_OUT);  // Set WATCH_OUT to an output pin
