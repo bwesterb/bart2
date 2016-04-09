@@ -126,12 +126,12 @@ void main(void)
         draad_tx_buffer >>= 1;
 
         if (bit)
-            _delay_us(DRAAD_DELAY * 2);
+            _delay_us(DRAAD_DELAY * 2 - DRAAD_PULLDOWN_TIME);
         else
-            _delay_us(DRAAD_DELAY);
+            _delay_us(DRAAD_DELAY - DRAAD_PULLDOWN_TIME);
 
         PORTB &= ~_BV(PIN_DRAAD);
-        _delay_us(DRAAD_DELAY * 0.25);
+        _delay_us(DRAAD_DELAY * 0.25 + DRAAD_PULLDOWN_TIME);
     }
 }
 
