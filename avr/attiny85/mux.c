@@ -115,19 +115,20 @@ void main(void)
                     continue;
 
                 // We received the whole frame.  Send it over draad.
-                if (who > 1)
+                if (spi_frame_who > 1)
                     continue;
 
                 // Check for overflow
-                if (draad_tx_buffer_size[who] + spi_frame_body_size > 32) {
+                if (draad_tx_buffer_size[spi_frame_who]
+                            + spi_frame_body_size > 32) {
                     status.draad_tx_overflow = 1;
                     continue;
                 }
 
                 // Again note that we can't be interrupted here.
-                draad_tx_buffer[who] |= (spi_frame_body
-                                            << draad_tx_buffer_size[who]);
-                draad_tx_buffer_size[who] += spi_rx_buffer_size;
+                draad_tx_buffer[spi_frame_who] |= (spi_frame_body
+                                        << draad_tx_buffer_size[spi_frame_who]);
+                draad_tx_buffer_size[spi_frame_who] += spi_rx_buffer_size;
             }
 
             // Either there is no frame, or we are at the start of a frame.
@@ -218,8 +219,10 @@ void main(void)
 // the USI unit with the byte it should send next.
 ISR(USI_START_vect)
 {
-    if (spi_tx_buffer_size == 0)
+    if (spi_tx_buffer_size == 0) {
+        USIDR = 0;
         goto done;
+    }
 
     USIDR = spi_tx_buffer & 8;  // next byte to send
 
@@ -230,7 +233,7 @@ ISR(USI_START_vect)
     else
         spi_tx_buffer_size -= 8;
 done:
-    ISR |= _BV(USISIF);  // clear interrupt flag
+    USISR |= _BV(USISIF);  // clear interrupt flag
 }
 
 // Called when the USI unit just received data over SPI.  We store the data in
