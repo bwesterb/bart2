@@ -72,7 +72,7 @@ void main(void)
 
     // Set up universal serial interface
     USICR |= _BV(USIWM0) | _BV(USICS1) | _BV(USICS0) // SPI mode 01
-          | _BV(USIOIE) | _BV(USISIE);   // with overflow and start int.
+          | _BV(USIOIE);   // with overflow interrupt.
 
     sei();  // enable interrupts
 
@@ -215,10 +215,20 @@ void main(void)
 
 // Interrupt handlers.
 
-// Called when the USI unit is about to send data over SPI.  We should provide
-// the USI unit with the byte it should send next.
-ISR(USI_START_vect)
+// Called when the USI unit just received data over SPI.  We store the data in
+// a buffer.  Also we provide the USI unit with the byte to send for the next
+// cycle.
+ISR(USI_OVF_vect)
 {
+    if (spi_rx_buffer_size == SPI_RX_BUFFER_MAX) {
+        status.spi_rx_overflow = 1;
+    } else {
+        byte i = (spi_rx_buffer_offset + spi_rx_buffer_size
+                        ) % SPI_RX_BUFFER_MAX;
+        spi_rx_buffer[i] = USIBR;
+        spi_rx_buffer_size++;
+    }
+
     if (spi_tx_buffer_size == 0) {
         USIDR = 0;
         goto done;
@@ -232,22 +242,6 @@ ISR(USI_START_vect)
         spi_tx_buffer_size = 0;
     else
         spi_tx_buffer_size -= 8;
-done:
-    USISR |= _BV(USISIF);  // clear interrupt flag
-}
-
-// Called when the USI unit just received data over SPI.  We store the data in
-// a buffer.
-ISR(USI_OVF_vect)
-{
-    if (spi_rx_buffer_size == SPI_RX_BUFFER_MAX) {
-        status.spi_rx_overflow = 1;
-        goto done;
-    }
-    
-    byte i = (spi_rx_buffer_offset + spi_rx_buffer_size) % SPI_RX_BUFFER_MAX;
-    spi_rx_buffer[i] = USIBR;
-    spi_rx_buffer_size++;
 
 done:
     USISR |= _BV(USIOIF);  // clear interrupt
