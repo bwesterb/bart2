@@ -128,7 +128,8 @@ void main(void)
                 // Again note that we can't be interrupted here.
                 draad_tx_buffer[spi_frame_who] |= (spi_frame_body
                                         << draad_tx_buffer_size[spi_frame_who]);
-                draad_tx_buffer_size[spi_frame_who] += spi_rx_buffer_size;
+                draad_tx_buffer_size[spi_frame_who] += spi_frame_body_size;
+                continue;
             }
 
             // Either there is no frame, or we are at the start of a frame.
