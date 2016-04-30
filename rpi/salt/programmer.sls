@@ -7,3 +7,4 @@ programmer packages:
         - avr-libc
         - python-serial
         - python-spidev
+        - tig
