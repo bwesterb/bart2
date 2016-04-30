@@ -235,7 +235,7 @@ ISR(USI_OVF_vect)
         goto done;
     }
 
-    USIDR = spi_tx_buffer & 8;  // next byte to send
+    USIDR = spi_tx_buffer & 255;  // next byte to send
 
     spi_tx_buffer >>= 8;
 
