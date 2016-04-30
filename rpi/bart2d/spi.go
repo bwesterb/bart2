@@ -1,5 +1,8 @@
 package main
 
+// TODO: implement SPI_IOC_RD_*
+//       using syscall.Syscall seems to give "bad adress" error
+
 import (
 	"fmt"
 	"os"
@@ -46,6 +49,24 @@ func SpiWrMode(f *os.File, mode uint8) error {
 	return fixNil(ern)
 }
 
+func SpiWrLsbFirst(f *os.File, lsbFirst uint8) error {
+	_, _, ern := s.Syscall(s.SYS_IOCTL, f.Fd(), SPI_IOC_WR_LSB_FIRST,
+		uintptr(unsafe.Pointer(&lsbFirst)))
+	return fixNil(ern)
+}
+
+func SpiWrBitsPerWord(f *os.File, bitsPerWord uint8) error {
+	_, _, ern := s.Syscall(s.SYS_IOCTL, f.Fd(), SPI_IOC_WR_BITS_PER_WORD,
+		uintptr(unsafe.Pointer(&bitsPerWord)))
+	return fixNil(ern)
+}
+
+func SpiWrMaxSpeedHz(f *os.File, maxSpeedHz uint32) error {
+	_, _, ern := s.Syscall(s.SYS_IOCTL, f.Fd(), SPI_IOC_WR_BITS_PER_WORD,
+		uintptr(unsafe.Pointer(&maxSpeedHz)))
+	return fixNil(ern)
+}
+
 func fixNil(ern s.Errno) error {
 	// since ern's Kind is uintptr, it is 0 on success rather than nil
 	if ern == 0 {
@@ -65,3 +86,29 @@ const (
 	SPI_IOC_WR_MAX_SPEED_HZ  = 0x40046b04 //01 00000000000100 01101011 00000100
 	SPI_IOC_RD_MAX_SPEED_HZ  = 0x80046b04 //10 00000000000100 01101011 00000100
 )
+
+type SpiConfig struct {
+	Mode        uint8
+	lsbFirst    uint8
+	bitsperWord uint8
+	maxSpeedHz  uint32
+}
+
+func (cfg *SpiConfig) Write(f *os.File) (err error) {
+	err = SpiWrMode(f, cfg.Mode)
+	if err != nil {
+		return
+	}
+	err = SpiWrLsbFirst(f, cfg.LsbFirst)
+	if err != nil {
+		return
+	}
+	err = SpiBitsPerWord(f, cfg.bitsPerWord)
+	if err != nil {
+		return
+	}
+	err = SpiMaxSpeedHz(f, cfg.maxSpeedHz)
+	if err != nil {
+		return
+	}
+}
