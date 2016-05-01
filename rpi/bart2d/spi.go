@@ -20,31 +20,6 @@ import (
 
 type SpiDevice os.File
 
-// SpiOpen opens the named SPI device (e.g. /dev/spidev0.0) for reading.
-func SpiOpen(name string,
-	mode uint8, lsbFirst bool, bitsPerWord uint8, maxSpeedHz uint32,
-) (d *SpiDevice, err error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return
-	}
-	d = (*SpiDevice)(f)
-	err = d.WrMode(mode)
-	if err != nil {
-		return
-	}
-	err = d.WrLsbFirst(lsbFirst)
-	if err != nil {
-		return
-	}
-	err = d.WrBitsPerWord(bitsPerWord)
-	if err != nil {
-		return
-	}
-	err = d.WrMaxSpeedHz(maxSpeedHz)
-	return
-}
-
 func (d *SpiDevice) Close() error {
 	return (*os.File)(d).Close()
 }
@@ -80,11 +55,7 @@ func (d *SpiDevice) WrMaxSpeedHz(maxSpeedHz uint32) error {
 }
 
 // Message transfers tbuf to the other end, while receiving in rbuf.
-func (d *SpiDevice) Message(rbuf, tbuf []byte) error {
-	return d.Message3(rbuf, tbuf, SpiMessageArgs{})
-}
-
-func (d *SpiDevice) Message3(rbuf, tbuf []byte, args SpiMessageArgs) error {
+func (d *SpiDevice) Message(rbuf, tbuf []byte, args SpiMessageArgs) error {
 	if len(rbuf) != len(tbuf) {
 		return fmt.Errorf("Slices rbuf and tbuf should have the same length")
 	}
@@ -135,3 +106,53 @@ const (
 	SPI_IOC_WR_BITS_PER_WORD = 0x40016b03 //01 00000000000001 01101011 00000011
 	SPI_IOC_WR_MAX_SPEED_HZ  = 0x40046b04 //01 00000000000100 01101011 00000100
 )
+
+type SpiConfiguredDevice struct {
+	Device *SpiDevice
+	SpiMessageArgs
+}
+
+func (d *SpiConfiguredDevice) Close() error {
+	return d.Device.Close()
+}
+
+// SpiOpen opens the named SPI device (e.g. /dev/spidev0.0) for reading.
+func SpiOpen(name string,
+	mode uint8, lsbFirst bool, bitsPerWord uint8, speedHz uint32,
+) (d *SpiConfiguredDevice, err error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return
+	}
+
+	d = &SpiConfiguredDevice{
+		Device: (*SpiDevice)(f),
+		SpiMessageArgs: SpiMessageArgs{
+			BitsPerWord: bitsPerWord,
+			SpeedHz:     speedHz,
+		},
+	}
+
+	// configure device
+	err = d.Device.WrMode(mode)
+	if err != nil {
+		return
+	}
+	err = d.Device.WrLsbFirst(lsbFirst)
+	if err != nil {
+		return
+	}
+	err = d.Device.WrBitsPerWord(bitsPerWord)
+	if err != nil {
+		return
+	}
+	err = d.Device.WrMaxSpeedHz(speedHz)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (d *SpiConfiguredDevice) Message(rbuf, tbuf []byte) error {
+	return d.Device.Message(rbuf, tbuf, d.SpiMessageArgs)
+}
