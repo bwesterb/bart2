@@ -71,7 +71,7 @@ func (msg *MuxiMsg) readFrom(buf []byte) error {
 func (msg MuxiMsg) getIdx(i uint) (byteIdx uint, bitIdx uint) {
 	byteIdx = i / 8
 	var shift uint = 0
-	if uint(msg.Length) - byteIdx*8 < 8 {
+	if uint(msg.Length)-byteIdx*8 < 8 {
 		shift = 8 - (uint(msg.Length) - byteIdx*8)
 	}
 	bitIdx = i%8 + shift
@@ -133,7 +133,7 @@ func MuxiOpen() (muxi *Muxi, err error) {
 		in:        make(chan MuxiMsg),
 		closer:    make(chan bool),
 		err:       make(chan error),
-		ticker:    time.NewTicker(500*time.Millisecond),
+		ticker:    time.NewTicker(500 * time.Millisecond),
 	}
 
 	muxi.Err = muxi.err
