@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strings"
+	"time"
 )
 
 type MuxiMsg struct {
@@ -13,8 +15,17 @@ type MuxiMsg struct {
 }
 
 func (msg MuxiMsg) String() string {
-	return fmt.Sprintf("%v @ %v (length: %v)",
-		msg.Data, msg.Chip, msg.Length)
+	s := make([]string, 0, 6)
+	for i := 0; 8*i < int(msg.Length); i++ {
+		l := int(msg.Length) - 8*i
+		if l >= 8 {
+			l = 8
+		}
+		format := "%0" + fmt.Sprintf("%d", l) + "b"
+		s = append(s, fmt.Sprintf(format, msg.Data[i]))
+	}
+	s = append(s, "@", fmt.Sprintf("%d", msg.Chip))
+	return strings.Join(s, "")
 }
 
 func (msg MuxiMsg) Vet() error {
@@ -29,7 +40,7 @@ func (msg MuxiMsg) Vet() error {
 
 func (msg MuxiMsg) writeTo(buf []byte) {
 	// assume len(buf) >= 5
-    copy(buf[1:], msg.Data[:])
+	copy(buf[1:], msg.Data[:])
 	buf[0] = 1<<7 | msg.Length<<2 | msg.Chip
 }
 
@@ -53,34 +64,65 @@ func (msg *MuxiMsg) readFrom(buf []byte) error {
 	if len(buf) != numofbytes+1 {
 		return fmt.Errorf("invalid frame: too many or too few bytes")
 	}
-    copy(msg.Data[:], buf[1:])
+	copy(msg.Data[:], buf[1:])
 	return nil
 }
 
+func (msg MuxiMsg) getIdx(i uint) (byteIdx uint, bitIdx uint) {
+	byteIdx = i / 8
+	var shift uint = 0
+	if uint(msg.Length) - byteIdx*8 < 8 {
+		shift = 8 - (uint(msg.Length) - byteIdx*8)
+	}
+	bitIdx = i%8 + shift
+	return
+}
+
+func (msg *MuxiMsg) SetBit(i uint, value bool) {
+	byteIdx, bitIdx := msg.getIdx(i)
+	if value {
+		msg.Data[byteIdx] |= 1 << (7 - bitIdx)
+	} else {
+		msg.Data[byteIdx] &= 255 - 1<<(7-bitIdx)
+	}
+}
+
+func (msg *MuxiMsg) GetBit(i uint) bool {
+	byteIdx, bitIdx := msg.getIdx(i)
+	return (msg.Data[byteIdx]>>(7-bitIdx))&1 == 1
+}
+
+func MuxiMsgJoin(msg1, msg2 MuxiMsg) (res MuxiMsg) {
+	// assume msg1.Chip = msg2.Chip
+	// assume msg1.Length + msg2.Length <= 31
+	res.Chip = msg1.Chip
+	res.Length = msg1.Length + msg2.Length
+	for i := uint(0); i < uint(msg1.Length); i++ {
+		res.SetBit(i, msg1.GetBit(i))
+	}
+	for i := uint(0); i < uint(msg2.Length); i++ {
+		res.SetBit(uint(msg1.Length)+i, msg2.GetBit(i))
+	}
+	return
+}
+
 type Muxi struct {
+	Out <-chan MuxiMsg
+	In  chan<- MuxiMsg
+	Err <-chan error
+
 	spiDevice      *SpiConfiguredDevice
 	receivedWriter *io.PipeWriter
 	messageScanner *bufio.Scanner
 	out, in        chan MuxiMsg
-	closer         chan bool // closed is closed if the muxi is closed
+	closer         chan bool // closer is closed if the muxi is closed
 	err            chan error
 	rbuf, tbuf     [5]byte
-}
-
-func (m *Muxi) Out() <-chan MuxiMsg {
-	return m.out
-}
-
-func (m *Muxi) In() chan<- MuxiMsg {
-	return m.in
-}
-
-func (m *Muxi) Err() <-chan error {
-	return m.err
+	ticker         *time.Ticker
 }
 
 func MuxiOpen() (muxi *Muxi, err error) {
-	spidev, err := SpiOpen("/dev/spidev0.0", 1, false, 8, 10e5)
+	spidev, err := SpiOpen("/dev/spidev0.0", 1, false, 8, 10e4)
 	if err != nil {
 		return
 	}
@@ -91,7 +133,12 @@ func MuxiOpen() (muxi *Muxi, err error) {
 		in:        make(chan MuxiMsg),
 		closer:    make(chan bool),
 		err:       make(chan error),
+		ticker:    time.NewTicker(500*time.Millisecond),
 	}
+
+	muxi.Err = muxi.err
+	muxi.In = muxi.in
+	muxi.Out = muxi.out
 
 	reader, writer := io.Pipe()
 	muxi.receivedWriter = writer
@@ -101,8 +148,8 @@ func MuxiOpen() (muxi *Muxi, err error) {
 		if len(data) == 0 {
 			return // 0, nil, nil
 		}
-		if data[advance] == 0 {
-			for ; advance < len(data); advance++ {
+		if data[0] == 0 {
+			for ; advance < len(data) && data[advance] == 0; advance++ {
 			}
 			return // advance, nil, nil
 		}
@@ -116,21 +163,20 @@ func MuxiOpen() (muxi *Muxi, err error) {
 
 		if advance > len(data) {
 			advance = 0
-			return
+			return // 0, nil, nil
 		}
 
 		token = data[:advance]
-		return
+		return // advance, <frame>, nil
 	})
 
-	go muxi.doTransmit()
+	go muxi.doTransfer()
 	go muxi.doProcess()
 	return
 }
 
 func (m *Muxi) Close() error {
 	close(m.closer)
-	m.receivedWriter.Close()
 	return nil
 }
 
@@ -139,12 +185,22 @@ func (m *Muxi) doProcess() {
 	for {
 		msg = MuxiMsg{}
 		m.messageScanner.Scan()
-		msg.readFrom(m.messageScanner.Bytes())
-		m.out <- msg
+		if len(m.messageScanner.Bytes()) == 0 {
+			return
+		}
+		if err := msg.readFrom(m.messageScanner.Bytes()); err != nil {
+			m.err <- err
+			return
+		}
+		select {
+		case m.out <- msg:
+		case _ = <-m.closer:
+			return
+		}
 	}
 }
 
-func (m *Muxi) doTransmit() {
+func (m *Muxi) doTransfer() {
 	for {
 		select {
 		case msg := <-m.in:
@@ -152,8 +208,17 @@ func (m *Muxi) doTransmit() {
 				m.err <- err
 				return
 			}
+		case _ = <-m.ticker.C:
+			m.tbuf = [5]byte{0, 0, 0, 0, 0}
+			if err := m.transfer(); err != nil {
+				m.err <- err
+				return
+			}
 		case _ = <-m.closer:
-			break
+			m.receivedWriter.Close()
+			m.ticker.Stop()
+			m.spiDevice.Close()
+			return
 		}
 	}
 }
@@ -170,7 +235,7 @@ func (m *Muxi) transfer() error {
 	if err := m.spiDevice.Message(m.rbuf[:], m.tbuf[:]); err != nil {
 		return err
 	}
-    fmt.Printf("muxi: received %v; transferred %v\n", m.rbuf, m.tbuf)
+	fmt.Printf("muxi: received %v; transferred %v\n", m.rbuf, m.tbuf)
 	if _, err := m.receivedWriter.Write(m.rbuf[:]); err != nil {
 		return err
 	}
