@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -43,7 +44,7 @@ type RMeter struct {
 
 // R returns the measured resistance at the given voltage ratio.
 func (r RMeter) R(ratio float64) float64 {
-	return ratio / (1 - ratio) * r.Resistor
+	return (1/ratio - 1) * r.Resistor
 }
 
 // VRatioMeter models the way the ICs measure the ratio of the
@@ -73,10 +74,27 @@ type ChipiReport struct {
 }
 
 func (r *ChipiReport) String() string {
-	return fmt.Sprintf("Chip %v @ %.1f °C (%v/1023)",
+	flags := make([]string, 0, 5)
+	if r.Heating {
+		flags = append(flags, "Heating")
+	}
+	if r.OK {
+		flags = append(flags, "OK")
+	}
+	if r.TempLow {
+		flags = append(flags, "TempLow")
+	}
+	if r.TempHigh {
+		flags = append(flags, "TempHigh")
+	}
+	if r.BudyDied {
+		flags = append(flags, "BudyDied")
+	}
+	return fmt.Sprintf("Chip %v @ %.1f °C (%v/1023) %s",
 		r.Chip,
 		r.TempC,
-		r.VoltageNo)
+		r.VoltageNo,
+		strings.Join(flags, " "))
 }
 
 func (c *Chipi) reportFrom(msg MuxiMsg) (r ChipiReport) {
@@ -112,7 +130,7 @@ type Chipi struct {
 	err               chan error
 	closer            chan bool
 	muxi              *Muxi
-	out1, out2        chan MuxiMsg
+	out0, out1        chan MuxiMsg
 }
 
 // ChipiOpen opens an interface to the chips.
@@ -121,8 +139,8 @@ func ChipiOpen() (chipi *Chipi, err error) {
 		reports:           make(chan ChipiReport),
 		err:               make(chan error),
 		closer:            make(chan bool),
+		out0:              make(chan MuxiMsg),
 		out1:              make(chan MuxiMsg),
-		out2:              make(chan MuxiMsg),
 		thermistor:        ourThermistor(),
 		resistanceMeter:   ourRMeter(),
 		voltageRatioMeter: ourVRatioMeter(),
@@ -132,8 +150,8 @@ func ChipiOpen() (chipi *Chipi, err error) {
 	if chipi.muxi, err = MuxiOpen(); err != nil {
 		return
 	}
+	go chipi.doGetReports(0)
 	go chipi.doGetReports(1)
-	go chipi.doGetReports(2)
 	go chipi.doGetErrors()
 	go chipi.doSortMessages()
 	return
@@ -148,12 +166,12 @@ func (chipi *Chipi) Close() error {
 func (chipi *Chipi) doGetReports(chip byte) {
 	var out <-chan MuxiMsg
 	switch chip {
+	case 0:
+		out = chipi.out0
 	case 1:
 		out = chipi.out1
-	case 2:
-		out = chipi.out2
 	default:
-		chipi.err <- fmt.Errorf("chipi: chip neither 1 nor 2")
+		chipi.err <- fmt.Errorf("chipi: chip neither 0 nor 1")
 		return
 	}
 
@@ -203,12 +221,12 @@ func (chipi *Chipi) doSortMessages() {
 		select {
 		case msg := <-chipi.muxi.Out:
 			switch msg.Chip {
+			case 0:
+				chipi.out0 <- msg
 			case 1:
 				chipi.out1 <- msg
-			case 2:
-				chipi.out2 <- msg
 			default:
-				chipi.err <- fmt.Errorf("chipi: chip neither 1 nor 2")
+				chipi.err <- fmt.Errorf("chipi: chip neither 0 nor 1")
 			}
 		case _ = <-chipi.closer:
 			return

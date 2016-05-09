@@ -29,8 +29,8 @@ func (msg MuxiMsg) String() string {
 }
 
 func (msg MuxiMsg) Vet() error {
-	if msg.Chip == 0 || msg.Chip > 2 {
-		return fmt.Errorf("muxi: invalid MuxiMsg: Chip should be 1 or 2.")
+	if msg.Chip > 1 {
+		return fmt.Errorf("muxi: invalid MuxiMsg: Chip should be 0 or 1.")
 	}
 	if msg.Length > 31 { // 11111
 		return fmt.Errorf("muxi: invalid MuxiMsg: Length should be below 31")
