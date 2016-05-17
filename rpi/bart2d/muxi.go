@@ -122,7 +122,7 @@ type Muxi struct {
 }
 
 func MuxiOpen() (muxi *Muxi, err error) {
-	spidev, err := SpiOpen("/dev/spidev0.0", 1, false, 8, 10e4)
+	spidev, err := SpiOpen("/dev/spidev0.0", 1, false, 8, 16384)
 	if err != nil {
 		return
 	}
