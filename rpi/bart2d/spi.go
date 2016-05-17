@@ -122,6 +122,7 @@ func SpiOpen(name string,
 ) (d *SpiConfiguredDevice, err error) {
 	f, err := os.Open(name)
 	if err != nil {
+		err = WrapErr(err, "while opening character device %v: ", name)
 		return
 	}
 
@@ -136,18 +137,22 @@ func SpiOpen(name string,
 	// configure device
 	err = d.Device.WrMode(mode)
 	if err != nil {
+		err = WrapErr(err, "while setting Mode to %v: ", mode)
 		return
 	}
 	err = d.Device.WrLsbFirst(lsbFirst)
 	if err != nil {
+		err = WrapErr(err, "while setting LsbFirst to %v: ", lsbFirst)
 		return
 	}
 	err = d.Device.WrBitsPerWord(bitsPerWord)
 	if err != nil {
+		err = WrapErr(err, "while setting BitsPerWord to %v: ", bitsPerWord)
 		return
 	}
 	err = d.Device.WrMaxSpeedHz(speedHz)
 	if err != nil {
+		err = WrapErr(err, "while setting MaxSpeedHz to %v: ", speedHz)
 		return
 	}
 	return
