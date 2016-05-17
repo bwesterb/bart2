@@ -9,42 +9,80 @@ import (
 )
 
 type MuxiMsg struct {
-	Data   [4]byte
-	Length byte
-	Chip   byte
+	Bits string
+	Chip byte
+}
+
+func (msg *MuxiMsg) Bool(idx int) bool {
+	return msg.Bits[idx] == "1"[0]
+}
+
+func (msg *MuxiMsg) Length() int {
+	return len(msg.Bits)
+}
+
+func (msg *MuxiMsg) UintX(idx, length int, lsbFirst bool) uint {
+	return parseBinary(msg.Bits[idx:idx+length], lsbFirst)
+}
+
+func parseBinary(text string, lsbFirst bool) (res uint) {
+	var idx int
+	for i := 0; i < len(text); i++ {
+		if lsbFirst {
+			idx = len(text) - i - 1
+		} else {
+			idx = i
+		}
+		res = res << 1
+		if text[idx] == "1"[0] {
+			res++
+		}
+	}
+	return
 }
 
 func (msg MuxiMsg) String() string {
-	s := make([]string, 0, 6)
-	for i := 0; 8*i < int(msg.Length); i++ {
-		l := int(msg.Length) - 8*i
-		if l >= 8 {
-			l = 8
-		}
-		format := "%0" + fmt.Sprintf("%d", l) + "b"
-		s = append(s, fmt.Sprintf(format, msg.Data[i]))
-	}
-	s = append(s, "@", fmt.Sprintf("%d", msg.Chip))
-	return strings.Join(s, "")
+	return fmt.Sprintf("%v@%v", msg.Bits, msg.Chip)
 }
 
-func (msg MuxiMsg) Vet() error {
+func (msg *MuxiMsg) Vet() error {
 	if msg.Chip > 1 {
 		return fmt.Errorf("muxi: invalid MuxiMsg: Chip should be 0 or 1.")
 	}
-	if msg.Length > 31 { // 11111
-		return fmt.Errorf("muxi: invalid MuxiMsg: Length should be below 31")
+	if len(msg.Bits) > 31 { // 11111
+		return fmt.Errorf("muxi: invalid MuxiMsg: " +
+			"length of Bits should be below 31")
+	}
+	for i := 0; i < len(msg.Bits); i++ {
+		if msg.Bits[i] != "0"[0] && msg.Bits[i] != "1"[0] {
+			return fmt.Errorf("muxi: invalid MuxiMsg: Bits should consist" +
+				" of only '0' and '1'.")
+		}
 	}
 	return nil
 }
 
-func (msg MuxiMsg) writeTo(buf []byte) {
+func (msg *MuxiMsg) writeTo(buf []byte) {
 	// assume len(buf) >= 5
-	copy(buf[1:], msg.Data[:])
-	buf[0] = 1<<7 | msg.Length<<2 | msg.Chip
+	// write header
+	buf[0] = 1<<7 | byte(msg.Length())<<2 | msg.Chip
+	// write body
+	var byteIdx, bitsLeft int // 0, 0
+	for i := 0; i < len(msg.Bits); i++ {
+		if bitsLeft == 0 {
+			byteIdx++
+			bitsLeft = 8
+		}
+		buf[byteIdx] = buf[byteIdx] << 1
+		if msg.Bits[i] == "1"[0] {
+			buf[byteIdx]++
+		}
+		bitsLeft--
+	}
 }
 
 func (msg *MuxiMsg) readFrom(buf []byte) error {
+	// read header
 	if len(buf) == 0 {
 		return fmt.Errorf("invalid frame: no header")
 	}
@@ -52,57 +90,44 @@ func (msg *MuxiMsg) readFrom(buf []byte) error {
 	if header>>7 != 1 {
 		return fmt.Errorf("invalid frame: first bit of the header should be 1")
 	}
-	msg.Chip = header & 3           // pick out 000000xx
-	msg.Length = (header >> 2) & 31 // pick out 0xxxxx00
+	msg.Chip = header & 3        // pick out 000000xx
+	length := (header >> 2) & 31 // pick out 0xxxxx00
 
-	var numofbytes int = 0
-	numofbytes += int(msg.Length) / 8
-	if msg.Length%8 > 0 {
-		numofbytes++
-	}
+	// read body
+	var byteIdx, bitsLeft int // 0, 0
+	var curByte byte
 
-	if len(buf) != numofbytes+1 {
-		return fmt.Errorf("invalid frame: too many or too few bytes")
+	s := make([]string, 0, length)
+
+	for length > 0 {
+		if bitsLeft == 0 {
+			byteIdx++
+			curByte = buf[byteIdx]
+			bitsLeft = 8
+		}
+
+		var bit string
+		switch curByte % 2 {
+		case 1:
+			bit = "1"
+		case 0:
+			bit = "0"
+		}
+		s = append(s, bit)
+
+		length--
+		bitsLeft--
+		curByte = curByte >> 1
 	}
-	copy(msg.Data[:], buf[1:])
+	msg.Bits = strings.Join(s, "")
 	return nil
-}
-
-func (msg MuxiMsg) getIdx(i uint) (byteIdx uint, bitIdx uint) {
-	byteIdx = i / 8
-	var shift uint = 0
-	if uint(msg.Length)-byteIdx*8 < 8 {
-		shift = 8 - (uint(msg.Length) - byteIdx*8)
-	}
-	bitIdx = i%8 + shift
-	return
-}
-
-func (msg *MuxiMsg) SetBit(i uint, value bool) {
-	byteIdx, bitIdx := msg.getIdx(i)
-	if value {
-		msg.Data[byteIdx] |= 1 << (7 - bitIdx)
-	} else {
-		msg.Data[byteIdx] &= 255 - 1<<(7-bitIdx)
-	}
-}
-
-func (msg *MuxiMsg) GetBit(i uint) bool {
-	byteIdx, bitIdx := msg.getIdx(i)
-	return (msg.Data[byteIdx]>>(7-bitIdx))&1 == 1
 }
 
 func MuxiMsgJoin(msg1, msg2 MuxiMsg) (res MuxiMsg) {
 	// assume msg1.Chip = msg2.Chip
 	// assume msg1.Length + msg2.Length <= 31
 	res.Chip = msg1.Chip
-	res.Length = msg1.Length + msg2.Length
-	for i := uint(0); i < uint(msg1.Length); i++ {
-		res.SetBit(i, msg1.GetBit(i))
-	}
-	for i := uint(0); i < uint(msg2.Length); i++ {
-		res.SetBit(uint(msg1.Length)+i, msg2.GetBit(i))
-	}
+	res.Bits = msg1.Bits + msg2.Bits
 	return
 }
 
@@ -235,7 +260,7 @@ func (m *Muxi) transfer() error {
 	if err := m.spiDevice.Message(m.rbuf[:], m.tbuf[:]); err != nil {
 		return err
 	}
-	fmt.Printf("muxi: received %v; transferred %v\n", m.rbuf, m.tbuf)
+	//fmt.Printf("muxi: received %v; transferred %v\n", m.rbuf, m.tbuf)
 	if _, err := m.receivedWriter.Write(m.rbuf[:]); err != nil {
 		return err
 	}

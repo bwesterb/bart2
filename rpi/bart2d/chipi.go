@@ -98,15 +98,14 @@ func (r *ChipiReport) String() string {
 }
 
 func (c *Chipi) reportFrom(msg MuxiMsg) (r ChipiReport) {
-	fmt.Println(msg)
 	r.Time = time.Now()
 	r.Chip = msg.Chip
-	r.VoltageNo = uint(msg.Data[0])<<2 + uint(msg.Data[1])>>6
-	r.Heating = msg.GetBit(10)
-	r.OK = msg.GetBit(11)
-	r.TempLow = msg.GetBit(12)
-	r.TempHigh = msg.GetBit(13)
-	r.BudyDied = msg.GetBit(14)
+	r.VoltageNo = msg.UintX(0, 10, true) // true = least significant bit first
+	r.Heating = msg.Bool(10)
+	r.OK = msg.Bool(11)
+	r.TempLow = msg.Bool(12)
+	r.TempHigh = msg.Bool(13)
+	r.BudyDied = msg.Bool(14)
 	r.computeTempC(c)
 	return
 }
@@ -151,7 +150,7 @@ func ChipiOpen() (chipi *Chipi, err error) {
 		return
 	}
 	go chipi.doGetReports(0)
-	go chipi.doGetReports(1)
+	//go chipi.doGetReports(1)
 	go chipi.doGetErrors()
 	go chipi.doSortMessages()
 	return
@@ -178,12 +177,11 @@ func (chipi *Chipi) doGetReports(chip byte) {
 outerLoop:
 	for {
 		chipi.muxi.In <- MuxiMsg{
-			Chip:   chip,
-			Length: 1,
-			Data:   [4]byte{1, 0, 0, 0},
+			Chip: chip,
+			Bits: "1",
 		}
 		response := MuxiMsg{Chip: chip}
-		for response.Length < 16 {
+		for response.Length() < 16 {
 			select {
 			case msg := <-out:
 				response = MuxiMsgJoin(response, msg)
@@ -195,7 +193,7 @@ outerLoop:
 				return
 			}
 		}
-		if response.Length != 16 {
+		if response.Length() != 16 {
 			chipi.err <- fmt.Errorf("chipi: chip %v send a message of size %v",
 				chip, response.Length)
 			continue outerLoop
