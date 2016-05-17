@@ -29,7 +29,7 @@ func watchChipi(c *Chipi) {
 		case err := <-c.Err:
 			fmt.Printf("chipi error: %v\n", err)
 		case report := <-c.Reports:
-			fmt.Printf("received report: %s\n", report.String())
+			fmt.Printf("%s -- %s\n", report, report.Msg)
 		}
 	}
 }

@@ -71,9 +71,12 @@ type ChipiReport struct {
 	TempLow   bool
 	TempHigh  bool
 	BudyDied  bool
+
+    // for debug purposes:
+    Msg      MuxiMsg
 }
 
-func (r *ChipiReport) String() string {
+func (r ChipiReport) String() string {
 	flags := make([]string, 0, 5)
 	if r.Heating {
 		flags = append(flags, "Heating")
@@ -107,6 +110,7 @@ func (c *Chipi) reportFrom(msg MuxiMsg) (r ChipiReport) {
 	r.TempHigh = msg.Bool(13)
 	r.BudyDied = msg.Bool(14)
 	r.computeTempC(c)
+    r.Msg = msg
 	return
 }
 
@@ -150,7 +154,7 @@ func ChipiOpen() (chipi *Chipi, err error) {
 		return
 	}
 	go chipi.doGetReports(0)
-	//go chipi.doGetReports(1)
+	go chipi.doGetReports(1)
 	go chipi.doGetErrors()
 	go chipi.doSortMessages()
 	return
