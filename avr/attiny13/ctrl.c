@@ -18,9 +18,9 @@
 #define PIN_THERM      DDB4
 
 // Limits on tempearture
-#define TEMP_TARGET         500     // Heat if temp is below this
-#define TEMP_LOWER_BOUND    100     // go into error mode if temp is below this
-#define TEMP_UPPER_BOUND    800     // go into error mode if temp is above this
+#define TEMP_TARGET         790     // Heat if temp is below this
+#define TEMP_LOWER_BOUND    26      // go into error mode if temp is below this
+#define TEMP_UPPER_BOUND    980     // go into error mode if temp is above this
 
 // We add 32 measurements and to get a neat average.  adc_accum cotains
 // the partial sums of the current measurements and adc_cnt the amount we
