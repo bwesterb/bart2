@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,7 +14,7 @@ func ourThermistor() Thermistor {
 }
 
 func ourRMeter() RMeter {
-	return RMeter{Resistor: 10e3}
+	return RMeter{Resistor: 997}
 }
 
 func ourVRatioMeter() VRatioMeter {
@@ -70,34 +71,40 @@ type ChipiReport struct {
 	OK        bool
 	TempLow   bool
 	TempHigh  bool
-	BudyDied  bool
+	BuddyDied bool
 
-    // for debug purposes:
-    Msg      MuxiMsg
+	// for debug purposes:
+	Msg MuxiMsg
 }
 
 func (r ChipiReport) String() string {
-	flags := make([]string, 0, 5)
-	if r.Heating {
-		flags = append(flags, "Heating")
+	return strings.Join(r.toRecord(), " ")
+}
+
+const TIME_LAYOUT = "2006-01-02 15:04:05.0"
+
+func (rep ChipiReport) toRecord() (rec []string) {
+	rec = make([]string, 0, 9)
+	rec = append(rec, strconv.FormatFloat(rep.TempC, 'f', 1, 64))
+	rec = append(rec, rep.Time.Format(TIME_LAYOUT))
+	rec = append(rec, strconv.FormatUint(uint64(rep.Chip), 10))
+	rec = append(rec, strconv.FormatUint(uint64(rep.VoltageNo), 10))
+	if rep.Heating {
+		rec = append(rec, "Heating")
 	}
-	if r.OK {
-		flags = append(flags, "OK")
+	if rep.OK {
+		rec = append(rec, "OK")
 	}
-	if r.TempLow {
-		flags = append(flags, "TempLow")
+	if rep.TempLow {
+		rec = append(rec, "TempLow")
 	}
-	if r.TempHigh {
-		flags = append(flags, "TempHigh")
+	if rep.TempHigh {
+		rec = append(rec, "TempHigh")
 	}
-	if r.BudyDied {
-		flags = append(flags, "BudyDied")
+	if rep.BuddyDied {
+		rec = append(rec, "BuddyDied")
 	}
-	return fmt.Sprintf("Chip %v @ %.1f °C (%v/1023) %s",
-		r.Chip,
-		r.TempC,
-		r.VoltageNo,
-		strings.Join(flags, " "))
+	return
 }
 
 func (c *Chipi) reportFrom(msg MuxiMsg) (r ChipiReport) {
@@ -108,9 +115,9 @@ func (c *Chipi) reportFrom(msg MuxiMsg) (r ChipiReport) {
 	r.OK = msg.Bool(11)
 	r.TempLow = msg.Bool(12)
 	r.TempHigh = msg.Bool(13)
-	r.BudyDied = msg.Bool(14)
+	r.BuddyDied = msg.Bool(14)
 	r.computeTempC(c)
-    r.Msg = msg
+	r.Msg = msg
 	return
 }
 
