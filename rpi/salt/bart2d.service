@@ -1,0 +1,9 @@
+[Unit]
+Description=bart2d monitors the coffee machine
+
+[Service]
+ExecStart=/srv/go/bin/bart2d
+User=bart2d
+
+[Install]
+WantedBy=multi-user.target
