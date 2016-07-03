@@ -81,7 +81,7 @@ func (r ChipiReport) String() string {
 	return strings.Join(r.toRecord(), " ")
 }
 
-const TIME_LAYOUT = "2006-01-02 15:04:05.0"
+const TIME_LAYOUT = "15:04:05.0"
 
 func (rep ChipiReport) toRecord() (rec []string) {
 	rec = make([]string, 0, 9)
